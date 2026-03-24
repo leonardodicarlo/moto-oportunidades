@@ -134,11 +134,11 @@
                   {{ s.ml_ref_count }}
                 </span>
               </td>
-              <td class="text-end fw-semibold" style="color:#6366f1;">${{ "{:,.0f}".format(s.median).replace(",", ".") }}</td>
-              <td class="text-end">${{ "{:,.0f}".format(s.mean).replace(",", ".") }}</td>
-              <td class="text-end text-muted">${{ "{:,.0f}".format(s.p25).replace(",", ".") }}</td>
-              <td class="text-end text-muted">${{ "{:,.0f}".format(s.p75).replace(",", ".") }}</td>
-              <td class="text-end" style="color:#fbbf24;">${{ "{:,.0f}".format(s.threshold_price).replace(",", ".") }}</td>
+              <td class="text-end fw-semibold" style="color:#6366f1;">{% if s.currency == "USD" %}U$S{% else %}${% endif %} {{ "{:,.0f}".format(s.median).replace(",", ".") }}</td>
+              <td class="text-end">{% if s.currency == "USD" %}U$S{% else %}${% endif %} {{ "{:,.0f}".format(s.mean).replace(",", ".") }}</td>
+              <td class="text-end text-muted">{% if s.currency == "USD" %}U$S{% else %}${% endif %} {{ "{:,.0f}".format(s.p25).replace(",", ".") }}</td>
+              <td class="text-end text-muted">{% if s.currency == "USD" %}U$S{% else %}${% endif %} {{ "{:,.0f}".format(s.p75).replace(",", ".") }}</td>
+              <td class="text-end" style="color:#fbbf24;">{% if s.currency == "USD" %}U$S{% else %}${% endif %} {{ "{:,.0f}".format(s.threshold_price).replace(",", ".") }}</td>
               {% else %}
               <td colspan="7" class="text-muted text-center">Sin datos suficientes</td>
               {% endif %}
@@ -197,7 +197,7 @@
               </td>
 
               <!-- Price -->
-              <td class="text-end price-tag">${{ "{:,.0f}".format(item.price).replace(",", ".") }}</td>
+              <td class="text-end price-tag">{% if item.currency == "USD" %}U$S{% else %}${% endif %} {{ "{:,.0f}".format(item.price).replace(",", ".") }}</td>
 
               <!-- % below market -->
               <td class="text-end">

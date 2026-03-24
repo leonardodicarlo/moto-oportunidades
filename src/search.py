@@ -43,9 +43,13 @@ def _process_brand(
     for item in raw_items:
         title = item.get("title", "")
         price = float(item.get("price") or 0)
+        currency = item.get("currency_id", "ARS")
         if is_anticipo(title):
             continue
-        if price < config.MIN_PRICE_ARS:
+        # Precio mínimo: 800 000 ARS o 500 USD (filtrar repuestos/anticipos)
+        if currency == "USD" and price < 500:
+            continue
+        if currency != "USD" and price < config.MIN_PRICE_ARS:
             continue
         valid_items.append(item)
 
@@ -79,10 +83,14 @@ def _process_brand(
             if cat_price:
                 catalog_prices[cid] = float(cat_price)
 
+    # Detectar moneda dominante
+    usd_count = sum(1 for i in valid_items if i.get("currency_id") == "USD")
+    dominant_currency = "USD" if usd_count > len(valid_items) / 2 else "ARS"
+
     # Calcular estadísticas de mercado como fallback
     prices = [float(i.get("price") or 0) for i in valid_items if i.get("price")]
     ml_ref_count = sum(1 for i in valid_items if get_ml_reference_price(i)[0] is not None)
-    stats = compute_price_stats(brand, prices, ml_ref_count=ml_ref_count)
+    stats = compute_price_stats(brand, prices, ml_ref_count=ml_ref_count, currency=dominant_currency)
 
     if stats is None:
         return None, []

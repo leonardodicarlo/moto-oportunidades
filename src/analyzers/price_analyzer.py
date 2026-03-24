@@ -21,6 +21,7 @@ class PriceStats:
     max_price: float
     # Cuántos items tuvieron precio de referencia de ML vs estadístico
     ml_ref_count: int = 0
+    currency: str = "ARS"
 
     def below_market_threshold(self) -> float:
         return self.median * (1 - config.PRICE_BELOW_MARKET_THRESHOLD)
@@ -72,7 +73,7 @@ def _percentile(sorted_data: list[float], pct: float) -> float:
     return sorted_data[lower] * (1 - frac) + sorted_data[upper] * frac
 
 
-def compute_price_stats(brand: str, prices: list[float], ml_ref_count: int = 0) -> Optional[PriceStats]:
+def compute_price_stats(brand: str, prices: list[float], ml_ref_count: int = 0, currency: str = "ARS") -> Optional[PriceStats]:
     if not prices:
         return None
     if len(prices) < 5:
@@ -90,6 +91,7 @@ def compute_price_stats(brand: str, prices: list[float], ml_ref_count: int = 0) 
         min_price=sorted_prices[0],
         max_price=sorted_prices[-1],
         ml_ref_count=ml_ref_count,
+        currency=currency,
     )
 
 

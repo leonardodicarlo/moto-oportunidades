@@ -122,8 +122,37 @@ def _parse_item_element(el) -> dict | None:
     item_id = f"MLA{mla_match.group(1)}"
     clean_link = href.split("?")[0]  # Quitar query params de tracking
 
-    # Precio
+    # Moneda y Precio
     price = None
+    currency_id = "ARS"
+
+    # Buscar el contenedor de precio para extraer moneda y fracción juntos
+    price_container_selectors = [
+        ".andes-money-amount",
+        ".price-tag",
+        "[class*='price']",
+    ]
+    price_container = None
+    for sel in price_container_selectors:
+        price_container = el.select_one(sel)
+        if price_container:
+            break
+
+    if price_container:
+        # Detectar moneda — buscar el símbolo en el contenedor
+        currency_el = price_container.select_one(
+            ".andes-money-amount__currency-symbol, .price-tag-symbol"
+        )
+        if currency_el:
+            symbol = currency_el.get_text(strip=True)
+            if "U$S" in symbol or "USD" in symbol or "US$" in symbol:
+                currency_id = "USD"
+        else:
+            # Fallback: buscar "U$S" en el texto del contenedor de precio
+            container_text = price_container.get_text()
+            if "U$S" in container_text or "US$" in container_text:
+                currency_id = "USD"
+
     price_selectors = [
         ".andes-money-amount__fraction",
         ".price-tag-fraction",
@@ -163,7 +192,7 @@ def _parse_item_element(el) -> dict | None:
         "id": item_id,
         "title": title,
         "price": price,
-        "currency_id": "ARS",
+        "currency_id": currency_id,
         "permalink": clean_link,
         "condition": "used",
         "original_price": original_price,

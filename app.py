@@ -72,6 +72,7 @@ def _run_search_async(search_id: str, brands: list, threshold: float, min_score:
                     "p75": s.p75,
                     "threshold_price": s.below_market_threshold(),
                     "ml_ref_count": s.ml_ref_count,
+                    "currency": s.currency,
                 }
             else:
                 serialized_stats[brand] = None
