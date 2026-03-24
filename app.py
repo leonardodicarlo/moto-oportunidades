@@ -128,6 +128,41 @@ def debug_brand(brand: str):
             "sample_prices": [i.get("price") for i in d.get("results", [])[:5]],
         }
 
+    # Test APP token (client credentials — sin usuario, para búsquedas públicas)
+    app_token_resp = req.post(
+        f"{base}/oauth/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": config.ML_APP_ID,
+            "client_secret": config.ML_CLIENT_SECRET,
+        },
+        timeout=10,
+    )
+    app_token_data = app_token_resp.json()
+    app_token = app_token_data.get("access_token", "")
+
+    search_with_app_token = {}
+    if app_token:
+        r_search_app = req.get(
+            f"{base}/sites/{config.SITE_ID}/search",
+            params={"q": brand, "category": config.MOTO_CATEGORY, "limit": 3, "access_token": app_token},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
+        d = r_search_app.json()
+        search_with_app_token = {
+            "status": r_search_app.status_code,
+            "total": d.get("paging", {}).get("total"),
+            "returned": len(d.get("results", [])),
+            "error": d.get("message") or d.get("error"),
+            "sample_titles": [i.get("title") for i in d.get("results", [])[:3]],
+        }
+    else:
+        search_with_app_token = {
+            "error": f"No se pudo obtener APP token: {app_token_data}",
+            "client_secret_configured": bool(config.ML_CLIENT_SECRET),
+        }
+
     # Test token validity via /users/me
     r_me = req.get(f"{base}/users/me",
                    params={"access_token": token} if token else {},
@@ -140,6 +175,7 @@ def debug_brand(brand: str):
                      headers=headers, timeout=10)
 
     return jsonify({
+        "test_app_token_client_credentials": search_with_app_token,
         "credentials": {
             "app_id": app_id or "VACÍO",
             "access_token": (token[:20] + "...") if token else "VACÍO",
