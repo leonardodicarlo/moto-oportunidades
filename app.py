@@ -174,8 +174,29 @@ def debug_brand(brand: str):
                      params={"access_token": token} if token else {},
                      headers=headers, timeout=10)
 
+    # Probar endpoints alternativos que no requieren permiso de search
+    alt_results = {}
+    alt_endpoints = {
+        "highlights_categoria": f"/highlights/{config.SITE_ID}/category/{config.MOTO_CATEGORY}",
+        "category_info": f"/categories/{config.MOTO_CATEGORY}",
+        "trends": f"/trends/{config.SITE_ID}/{config.MOTO_CATEGORY}",
+    }
+    for name, path in alt_endpoints.items():
+        r = req.get(f"{base}{path}",
+                    params={"access_token": token} if token else {},
+                    headers=headers, timeout=10)
+        d = r.json()
+        items = d if isinstance(d, list) else d.get("results", d.get("items", []))
+        alt_results[name] = {
+            "status": r.status_code,
+            "error": d.get("message") or d.get("error") if isinstance(d, dict) else None,
+            "items_count": len(items) if isinstance(items, list) else "N/A",
+            "sample": items[:2] if isinstance(items, list) else str(d)[:200],
+        }
+
     return jsonify({
         "test_app_token_client_credentials": search_with_app_token,
+        "test_alternative_endpoints": alt_results,
         "credentials": {
             "app_id": app_id or "VACÍO",
             "access_token": (token[:20] + "...") if token else "VACÍO",
