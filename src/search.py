@@ -84,19 +84,13 @@ def _process_brand(
             if cat_price:
                 catalog_prices[cid] = float(cat_price)
 
-    # Separar la muestra de mercado (sort relevancia) de los candidatos baratos (sort precio)
-    # El scraper marca con _market_sample=True los items de la fase de muestra.
-    # Los stats se calculan SOLO sobre la muestra representativa para evitar sesgar la mediana.
-    market_sample = [i for i in valid_items if i.get("_market_sample")]
-    stat_items = market_sample if len(market_sample) >= 10 else valid_items
-
     # Detectar moneda dominante
-    usd_count = sum(1 for i in stat_items if i.get("currency_id") == "USD")
-    dominant_currency = "USD" if usd_count > len(stat_items) / 2 else "ARS"
+    usd_count = sum(1 for i in valid_items if i.get("currency_id") == "USD")
+    dominant_currency = "USD" if usd_count > len(valid_items) / 2 else "ARS"
 
-    # Calcular estadísticas de mercado solo con la muestra representativa
-    prices = [float(i.get("price") or 0) for i in stat_items if i.get("price")]
-    ml_ref_count = sum(1 for i in stat_items if get_ml_reference_price(i)[0] is not None)
+    # Calcular estadísticas de mercado sobre todos los items válidos
+    prices = [float(i.get("price") or 0) for i in valid_items if i.get("price")]
+    ml_ref_count = sum(1 for i in valid_items if get_ml_reference_price(i)[0] is not None)
     stats = compute_price_stats(brand, prices, ml_ref_count=ml_ref_count, currency=dominant_currency)
 
     if stats is None:
