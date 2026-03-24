@@ -163,4 +163,4 @@ class MercadoLibreClient:
         # API bloqueada — usar scraper web
         logger.info(f"  API no disponible, usando scraper web para {brand}")
         from src.api.scraper import fetch_all_for_brand as scrape
-        return scrape(brand)
+        return scrape(brand, max_pages=config.MAX_PAGES_PER_BRAND)

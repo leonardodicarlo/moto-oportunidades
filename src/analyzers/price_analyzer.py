@@ -132,6 +132,7 @@ def analyze_listing(
     item: dict,
     stats: Optional["PriceStats"],
     catalog_ref_price: Optional[float] = None,
+    threshold: Optional[float] = None,
 ) -> ListingAnalysis:
     """
     Analiza un ítem determinando si su precio está bajo el precio de mercado.
@@ -169,9 +170,10 @@ def analyze_listing(
         ref_source = "estadístico"
 
     # Calcular diferencia
+    effective_threshold = threshold if threshold is not None else config.PRICE_BELOW_MARKET_THRESHOLD
     if ref_price and ref_price > 0:
         pct_below = (ref_price - price) / ref_price
-        is_below = pct_below >= config.PRICE_BELOW_MARKET_THRESHOLD
+        is_below = pct_below >= effective_threshold
     else:
         pct_below = 0.0
         is_below = False

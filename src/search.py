@@ -2,6 +2,7 @@
 Lógica central de búsqueda reutilizable por main.py (CLI) y app.py (web).
 """
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import config
@@ -95,19 +96,15 @@ def _process_brand(
     if stats is None:
         return None, []
 
-    original_threshold = config.PRICE_BELOW_MARKET_THRESHOLD
-    config.PRICE_BELOW_MARKET_THRESHOLD = threshold
-
     analyzed: list[ListingAnalysis] = []
     for item in valid_items:
         cid = item.get("catalog_product_id")
         catalog_ref = catalog_prices.get(cid) if cid else None
-        listing = analyze_listing(item, stats, catalog_ref_price=catalog_ref)
+        listing = analyze_listing(item, stats, catalog_ref_price=catalog_ref, threshold=threshold)
         listing.urgency_keywords = detect_urgency_keywords(listing.title)
         listing.compute_opportunity_score()
         analyzed.append(listing)
 
-    config.PRICE_BELOW_MARKET_THRESHOLD = original_threshold
     return stats, analyzed
 
 
@@ -126,22 +123,26 @@ def run_search(
     all_stats: dict[str, Optional[PriceStats]] = {}
     all_opportunities: list[ListingAnalysis] = []
 
-    for brand in brands:
+    def process_one(brand):
         if on_progress:
             on_progress(brand, "buscando...")
+        return brand, _process_brand(client, brand, threshold, on_progress=on_progress)
 
-        stats, analyzed = _process_brand(client, brand, threshold, on_progress=on_progress)
-        all_stats[brand] = stats
+    with ThreadPoolExecutor(max_workers=len(brands)) as executor:
+        futures = {executor.submit(process_one, b): b for b in brands}
+        for future in as_completed(futures):
+            brand, (stats, analyzed) = future.result()
+            all_stats[brand] = stats
 
-        if not analyzed:
-            continue
+            if not analyzed:
+                continue
 
-        if keywords_only:
-            opportunities = [l for l in analyzed if l.urgency_keywords]
-        else:
-            opportunities = [l for l in analyzed if l.opportunity_score >= min_score]
+            if keywords_only:
+                opportunities = [l for l in analyzed if l.urgency_keywords]
+            else:
+                opportunities = [l for l in analyzed if l.opportunity_score >= min_score]
 
-        all_opportunities.extend(opportunities)
+            all_opportunities.extend(opportunities)
 
     all_opportunities.sort(key=lambda x: (-x.opportunity_score, x.price))
     return all_stats, all_opportunities

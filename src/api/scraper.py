@@ -204,10 +204,11 @@ def _parse_item_element(el) -> dict | None:
     }
 
 
-def fetch_all_for_brand(brand: str) -> list[dict]:
+def fetch_all_for_brand(brand: str, max_pages: int = 5) -> list[dict]:
     """
     Scrapea el sitio de ML para obtener motos usadas de una marca.
-    Pagina hasta agotar los resultados.
+    Limita a max_pages páginas (48 items/página) para mantener tiempos razonables.
+    ML ordena por relevancia, así que las primeras páginas tienen las mejores publicaciones.
     """
     session = requests.Session()
     session.headers.update(HEADERS)
@@ -215,9 +216,9 @@ def fetch_all_for_brand(brand: str) -> list[dict]:
     all_items: dict[str, dict] = {}
     page = 0
 
-    logger.info(f"Scrapeando ML para {brand}...")
+    logger.info(f"Scrapeando ML para {brand} (max {max_pages} páginas)...")
 
-    while True:
+    while page < max_pages:
         if page == 0:
             url = f"{BASE_URL}/motos/{brand.lower()}/usado/"
         else:
@@ -235,13 +236,11 @@ def fetch_all_for_brand(brand: str) -> list[dict]:
                 logger.info(f"  {brand}: sin más resultados en página {page+1}")
                 break
 
-            new_count = 0
             for item in items:
                 if item["id"] not in all_items:
                     all_items[item["id"]] = item
-                    new_count += 1
 
-            logger.info(f"  {brand} página {page+1}: {len(items)} items (+{new_count} nuevos)")
+            logger.info(f"  {brand} página {page+1}: {len(items)} items")
 
             if len(items) < PAGE_SIZE:
                 break  # Última página
