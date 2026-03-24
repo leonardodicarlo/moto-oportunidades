@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 import requests
@@ -9,10 +10,58 @@ logger = logging.getLogger(__name__)
 
 # ML's hard limit: offset + limit <= 1000
 ML_MAX_OFFSET = 950
+_ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
+
+def _refresh_access_token() -> str:
+    """Renueva el Access Token usando el Refresh Token y lo persiste en .env."""
+    if not config.ML_REFRESH_TOKEN:
+        return ""
+    response = requests.post(
+        "https://api.mercadolibre.com/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": config.ML_APP_ID,
+            "client_secret": config.ML_CLIENT_SECRET,
+            "refresh_token": config.ML_REFRESH_TOKEN,
+        },
+        timeout=15,
+    )
+    if response.status_code != 200:
+        logger.error(f"Error al renovar token: {response.json()}")
+        return ""
+    data = response.json()
+    new_token = data.get("access_token", "")
+    new_refresh = data.get("refresh_token", config.ML_REFRESH_TOKEN)
+
+    # Persistir en .env y en config en memoria
+    config.ML_ACCESS_TOKEN = new_token
+    config.ML_REFRESH_TOKEN = new_refresh
+    _write_env_key("ML_ACCESS_TOKEN", new_token)
+    _write_env_key("ML_REFRESH_TOKEN", new_refresh)
+    logger.info("Access Token renovado exitosamente.")
+    return new_token
+
+
+def _write_env_key(key: str, value: str):
+    if not os.path.exists(_ENV_PATH):
+        return
+    with open(_ENV_PATH) as f:
+        lines = f.readlines()
+    found = False
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}="):
+            lines[i] = f"{key}={value}\n"
+            found = True
+            break
+    if not found:
+        lines.append(f"{key}={value}\n")
+    with open(_ENV_PATH, "w") as f:
+        f.writelines(lines)
 
 
 class MercadoLibreClient:
-    """Cliente para la API pública de MercadoLibre."""
+    """Cliente para la API de MercadoLibre con auto-refresh de token."""
 
     def __init__(self):
         self.session = requests.Session()
@@ -27,6 +76,13 @@ class MercadoLibreClient:
         url = f"{config.BASE_URL}{path}"
         try:
             response = self.session.get(url, params=params, timeout=15)
+            # Si el token expiró, intentar renovarlo una vez
+            if response.status_code == 401 and config.ML_REFRESH_TOKEN:
+                logger.info("Token expirado, renovando...")
+                new_token = _refresh_access_token()
+                if new_token:
+                    self.session.headers.update({"Authorization": f"Bearer {new_token}"})
+                    response = self.session.get(url, params=params, timeout=15)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as e:

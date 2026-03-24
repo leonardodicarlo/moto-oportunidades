@@ -10,7 +10,9 @@ BASE_URL = "https://api.mercadolibre.com"
 
 # Optional: App credentials for higher rate limits
 ML_APP_ID = os.getenv("ML_APP_ID", "")
+ML_CLIENT_SECRET = os.getenv("ML_CLIENT_SECRET", "")
 ML_ACCESS_TOKEN = os.getenv("ML_ACCESS_TOKEN", "")
+ML_REFRESH_TOKEN = os.getenv("ML_REFRESH_TOKEN", "")
 
 # Brands to search
 BRANDS = ["Honda", "Yamaha", "Kawasaki", "KTM", "Ducati"]
