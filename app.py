@@ -176,22 +176,29 @@ def debug_brand(brand: str):
 
     # Probar endpoints alternativos que no requieren permiso de search
     alt_results = {}
-    alt_endpoints = {
-        "highlights_categoria": f"/highlights/{config.SITE_ID}/category/{config.MOTO_CATEGORY}",
-        "category_info": f"/categories/{config.MOTO_CATEGORY}",
-        "trends": f"/trends/{config.SITE_ID}/{config.MOTO_CATEGORY}",
-    }
-    for name, path in alt_endpoints.items():
-        r = req.get(f"{base}{path}",
+    # Obtener subcategorías de MLA1744 para encontrar IDs correctos
+    r_cat = req.get(f"{base}/categories/{config.MOTO_CATEGORY}",
                     params={"access_token": token} if token else {},
                     headers=headers, timeout=10)
-        d = r.json()
-        items = d if isinstance(d, list) else d.get("results", d.get("items", []))
-        alt_results[name] = {
-            "status": r.status_code,
-            "error": d.get("message") or d.get("error") if isinstance(d, dict) else None,
-            "items_count": len(items) if isinstance(items, list) else "N/A",
-            "sample": items[:2] if isinstance(items, list) else str(d)[:200],
+    cat_data = r_cat.json()
+    subcategories = cat_data.get("children_categories", [])
+    alt_results["subcategorias_MLA1744"] = [
+        {"id": c.get("id"), "name": c.get("name")} for c in subcategories
+    ]
+
+    # Probar highlights con las primeras subcategorías
+    for subcat in subcategories[:3]:
+        sid = subcat.get("id")
+        r_h = req.get(f"{base}/highlights/{config.SITE_ID}/category/{sid}",
+                      params={"access_token": token} if token else {},
+                      headers=headers, timeout=10)
+        d_h = r_h.json()
+        items_h = d_h if isinstance(d_h, list) else d_h.get("results", d_h.get("items", []))
+        alt_results[f"highlights_{sid}"] = {
+            "status": r_h.status_code,
+            "error": d_h.get("message") or d_h.get("error") if isinstance(d_h, dict) else None,
+            "items_count": len(items_h) if isinstance(items_h, list) else 0,
+            "sample_ids": [i.get("id") if isinstance(i, dict) else i for i in (items_h[:3] if isinstance(items_h, list) else [])],
         }
 
     return jsonify({
