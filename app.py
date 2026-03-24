@@ -96,17 +96,22 @@ def _run_search_async(search_id: str, brands: list, threshold: float, min_score:
 
 @app.route("/debug/<brand>")
 def debug_brand(brand: str):
-    """Diagnóstico: prueba la API de ML usando el cliente real (con app_id)."""
+    """Diagnóstico completo: muestra credenciales cargadas y prueba la API."""
     import requests as req
 
     base = config.BASE_URL
+    token = config.ML_ACCESS_TOKEN
     app_id = config.ML_APP_ID
-    results_out = {"app_id_configured": bool(app_id), "app_id_value": app_id or "VACÍO"}
+
+    headers = {"User-Agent": "moto-oportunidades/1.0"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
     def do_get(params):
         if app_id:
             params["app_id"] = app_id
-        r = req.get(f"{base}/sites/{config.SITE_ID}/search", params=params, timeout=10)
+        r = req.get(f"{base}/sites/{config.SITE_ID}/search",
+                    params=params, headers=headers, timeout=10)
         d = r.json()
         return {
             "url": r.url,
@@ -114,14 +119,21 @@ def debug_brand(brand: str):
             "total": d.get("paging", {}).get("total"),
             "returned": len(d.get("results", [])),
             "error": d.get("message") or d.get("error"),
-            "sample_titles": [i.get("title") for i in d.get("results", [])[:3]],
-            "sample_conditions": [i.get("condition") for i in d.get("results", [])[:3]],
+            "raw_response_preview": str(d)[:300],
+            "sample_titles": [i.get("title") for i in d.get("results", [])[:5]],
+            "sample_conditions": [i.get("condition") for i in d.get("results", [])[:5]],
+            "sample_prices": [i.get("price") for i in d.get("results", [])[:5]],
         }
 
-    results_out["test_con_categoria"] = do_get({"q": brand, "category": config.MOTO_CATEGORY, "limit": 3})
-    results_out["test_sin_categoria"] = do_get({"q": f"{brand} moto", "limit": 3})
-
-    return jsonify(results_out)
+    return jsonify({
+        "credentials": {
+            "app_id": app_id or "VACÍO",
+            "access_token": (token[:20] + "...") if token else "VACÍO",
+            "refresh_token": ("configurado" if config.ML_REFRESH_TOKEN else "VACÍO"),
+        },
+        "test_con_categoria": do_get({"q": brand, "category": config.MOTO_CATEGORY, "limit": 5}),
+        "test_sin_categoria": do_get({"q": f"{brand} moto usado", "limit": 5}),
+    })
 
 
 @app.route("/")
