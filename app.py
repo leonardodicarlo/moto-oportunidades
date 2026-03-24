@@ -225,6 +225,18 @@ def debug_brand(brand: str):
     })
 
 
+@app.route("/debug/scraper/<brand>")
+def debug_scraper(brand: str):
+    """Test rápido del scraper web — primeras 2 páginas."""
+    from src.api.scraper import fetch_all_for_brand
+    items = fetch_all_for_brand(brand)
+    return jsonify({
+        "brand": brand,
+        "total_found": len(items),
+        "sample": items[:5],
+    })
+
+
 @app.route("/")
 def index():
     return render_template("index.html", brands=config.BRANDS,

@@ -131,32 +131,36 @@ class MercadoLibreClient:
 
     def fetch_all_for_brand(self, brand: str) -> list[dict]:
         """
-        Descarga todas las publicaciones de motos usadas para una marca.
-        Pagina hasta el límite de la API de ML (~1000 resultados).
-        Filtra client-side por condition=='used' ya que ML no acepta el
-        parámetro condition como filtro directo en el search endpoint.
+        Obtiene todas las motos usadas de una marca.
+        Intenta el API oficial primero; si está bloqueado (403) usa el scraper web.
         """
         logger.info(f"Buscando publicaciones de {brand}...")
-        all_items: dict[str, dict] = {}
-        offset = 0
 
-        first_page = self.search_motorcycles(brand, offset=0)
-        total_available = first_page.get("paging", {}).get("total", 0)
-        batch = first_page.get("results", [])
-        for item in batch:
-            if item.get("condition") == "used":
-                all_items[item["id"]] = item
-
-        offset = len(batch)
-        cap = min(total_available, ML_MAX_OFFSET + config.API_PAGE_SIZE)
-
-        while offset < cap and batch:
-            page = self.search_motorcycles(brand, offset=offset)
-            batch = page.get("results", [])
+        # Probar API oficial
+        test = self.search_motorcycles(brand, offset=0)
+        if test.get("results") is not None:
+            # API disponible — paginar normalmente
+            all_items: dict[str, dict] = {}
+            total_available = test.get("paging", {}).get("total", 0)
+            batch = test.get("results", [])
             for item in batch:
                 if item.get("condition") == "used":
                     all_items[item["id"]] = item
-            offset += len(batch)
 
-        logger.info(f"  -> {len(all_items)} usadas de {total_available} totales para {brand}")
-        return list(all_items.values())
+            offset = len(batch)
+            cap = min(total_available, ML_MAX_OFFSET + config.API_PAGE_SIZE)
+            while offset < cap and batch:
+                page = self.search_motorcycles(brand, offset=offset)
+                batch = page.get("results", [])
+                for item in batch:
+                    if item.get("condition") == "used":
+                        all_items[item["id"]] = item
+                offset += len(batch)
+
+            logger.info(f"  -> {len(all_items)} usadas via API para {brand}")
+            return list(all_items.values())
+
+        # API bloqueada — usar scraper web
+        logger.info(f"  API no disponible, usando scraper web para {brand}")
+        from src.api.scraper import fetch_all_for_brand as scrape
+        return scrape(brand)
