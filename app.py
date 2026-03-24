@@ -127,11 +127,33 @@ def debug_brand(brand: str):
             "sample_prices": [i.get("price") for i in d.get("results", [])[:5]],
         }
 
+    # Test token validity via /users/me
+    r_me = req.get(f"{base}/users/me",
+                   params={"access_token": token} if token else {},
+                   headers=headers, timeout=10)
+    me_data = r_me.json()
+
+    # Test item lookup (completely public item if we know one)
+    r_site = req.get(f"{base}/sites/{config.SITE_ID}",
+                     params={"access_token": token} if token else {},
+                     headers=headers, timeout=10)
+
     return jsonify({
         "credentials": {
             "app_id": app_id or "VACÍO",
             "access_token": (token[:20] + "...") if token else "VACÍO",
             "refresh_token": ("configurado" if config.ML_REFRESH_TOKEN else "VACÍO"),
+        },
+        "test_token_valido_users_me": {
+            "status": r_me.status_code,
+            "user_id": me_data.get("id"),
+            "nickname": me_data.get("nickname"),
+            "account_type": me_data.get("account_type"),
+            "error": me_data.get("message") or me_data.get("error"),
+        },
+        "test_site_mla": {
+            "status": r_site.status_code,
+            "error": r_site.json().get("message") or r_site.json().get("error"),
         },
         "test_con_categoria": do_get({"q": brand, "category": config.MOTO_CATEGORY, "limit": 5}),
         "test_sin_categoria": do_get({"q": f"{brand} moto usado", "limit": 5}),
