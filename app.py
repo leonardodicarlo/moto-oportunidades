@@ -94,6 +94,48 @@ def _run_search_async(search_id: str, brands: list, threshold: float, min_score:
             })
 
 
+@app.route("/debug/<brand>")
+def debug_brand(brand: str):
+    """Diagnóstico: muestra qué devuelve la API de ML para una marca sin procesar."""
+    from src.api.mercadolibre import MercadoLibreClient
+    from src.analyzers.keyword_analyzer import is_anticipo
+    client = MercadoLibreClient()
+    raw = client.search_motorcycles(brand, offset=0, condition="used")
+    results = raw.get("results", [])
+    total = raw.get("paging", {}).get("total", 0)
+    error = raw.get("message") or raw.get("error")
+
+    filtered_anticipo, filtered_price, valid = [], [], []
+    for item in results:
+        price = float(item.get("price") or 0)
+        title = item.get("title", "")
+        if is_anticipo(title):
+            filtered_anticipo.append({"title": title, "price": price})
+        elif price < config.MIN_PRICE_ARS:
+            filtered_price.append({"title": title, "price": price})
+        else:
+            sp = item.get("sale_price") or {}
+            valid.append({
+                "title": title,
+                "price": price,
+                "original_price": item.get("original_price"),
+                "sale_price_regular": sp.get("regular_amount"),
+                "catalog_product_id": item.get("catalog_product_id"),
+                "condition": item.get("condition"),
+            })
+
+    return jsonify({
+        "brand": brand,
+        "api_error": error,
+        "total_available_in_ml": total,
+        "returned_in_this_page": len(results),
+        "min_price_ars_filter": config.MIN_PRICE_ARS,
+        "valid": valid,
+        "filtered_anticipo": filtered_anticipo,
+        "filtered_price_too_low": filtered_price,
+    })
+
+
 @app.route("/")
 def index():
     return render_template("index.html", brands=config.BRANDS,
