@@ -24,7 +24,7 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip, deflate",  # sin 'br': requests no soporta Brotli nativamente
     "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1",
     "Sec-Fetch-Dest": "document",
@@ -39,21 +39,36 @@ PAGE_SIZE = 48
 
 def _make_session() -> requests.Session:
     """
-    Crea una sesión HTTP que simula un browser real.
-    Primero visita la homepage de ML para obtener las cookies de sesión
-    que ML requiere antes de mostrar resultados de búsqueda.
+    Crea una sesión HTTP autenticada.
+
+    ML redirige a account-verification cuando no hay sesión activa.
+    Si tenemos un access_token de OAuth, lo usamos para crear una sesión web
+    en ML a través de su endpoint de login (el mismo flujo que usa el browser
+    después del callback OAuth). Esto establece las cookies de sesión necesarias.
     """
     session = requests.Session()
     session.headers.update(HEADERS)
+
     try:
-        # Visita de calentamiento: ML necesita ver cookies de sesión válidas
-        session.get(HOME_URL, timeout=15)
-        time.sleep(0.5)
-        # Segunda visita: homepage de motos usadas para obtener cookies de categoría
-        session.get(f"{BASE_URL}/motos/usado/", timeout=15, headers={"Referer": HOME_URL})
-        time.sleep(0.5)
+        if config.ML_ACCESS_TOKEN:
+            # Autenticar sesión web con el OAuth token
+            # ML acepta access_token como query param para crear la sesión web
+            session.get(
+                f"{HOME_URL}/login",
+                params={"access_token": config.ML_ACCESS_TOKEN, "go": f"{BASE_URL}/motos/usado/"},
+                allow_redirects=True,
+                timeout=15,
+            )
+            time.sleep(0.5)
+        else:
+            # Sin token: visita de calentamiento básica para obtener cookies anónimas
+            session.get(HOME_URL, timeout=15)
+            time.sleep(0.5)
+            session.get(f"{BASE_URL}/motos/usado/", timeout=15, headers={"Referer": HOME_URL})
+            time.sleep(0.5)
     except Exception as e:
-        logger.warning(f"Warmup request falló (continuando de todas formas): {e}")
+        logger.warning(f"Sesión ML falló (continuando de todas formas): {e}")
+
     return session
 
 
