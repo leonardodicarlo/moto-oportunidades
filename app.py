@@ -108,10 +108,11 @@ def debug_brand(brand: str):
         headers["Authorization"] = f"Bearer {token}"
 
     def do_get(params):
-        if app_id:
-            params["app_id"] = app_id
+        # app_id y access_token son mutuamente excluyentes
         if token:
             params["access_token"] = token
+        elif app_id:
+            params["app_id"] = app_id
         r = req.get(f"{base}/sites/{config.SITE_ID}/search",
                     params=params, headers=headers, timeout=10)
         d = r.json()

@@ -46,6 +46,7 @@ def main():
     auth_url = (
         f"https://auth.mercadolibre.com.ar/authorization"
         f"?response_type=code&client_id={APP_ID}&redirect_uri={REDIRECT_URI}"
+        f"&scope=read%20write%20offline_access"
     )
 
     print("\n🏍️  Autenticación Moto Oportunidades — MercadoLibre\n")

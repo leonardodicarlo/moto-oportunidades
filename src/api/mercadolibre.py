@@ -109,7 +109,8 @@ class MercadoLibreClient:
             "limit": config.API_PAGE_SIZE,
             "offset": offset,
         }
-        if config.ML_APP_ID:
+        # app_id solo se usa cuando no hay access_token (son mutuamente excluyentes)
+        if config.ML_APP_ID and not config.ML_ACCESS_TOKEN:
             params["app_id"] = config.ML_APP_ID
 
         result = self._get(f"/sites/{config.SITE_ID}/search", params=params)
