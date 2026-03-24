@@ -204,46 +204,41 @@ def _parse_item_element(el) -> dict | None:
     }
 
 
-def fetch_all_for_brand(brand: str, max_pages: int = 5) -> list[dict]:
+def _scrape_pages(session, brand: str, max_pages: int, sort: str = "relevance") -> list[dict]:
     """
-    Scrapea el sitio de ML para obtener motos usadas de una marca.
-    Limita a max_pages páginas (48 items/página) para mantener tiempos razonables.
-    ML ordena por relevancia, así que las primeras páginas tienen las mejores publicaciones.
+    Scrapea N páginas de ML para una marca.
+    sort="relevance"  → orden por defecto de ML (más relevantes primero)
+    sort="price_asc"  → más baratos primero (_OrderId_PRICE*)
     """
-    session = requests.Session()
-    session.headers.update(HEADERS)
-
+    order_tag = "_OrderId_PRICE*" if sort == "price_asc" else ""
     all_items: dict[str, dict] = {}
     page = 0
 
-    logger.info(f"Scrapeando ML para {brand} (max {max_pages} páginas)...")
-
     while page < max_pages:
         if page == 0:
-            url = f"{BASE_URL}/motos/{brand.lower()}/usado/"
+            url = f"{BASE_URL}/motos/{brand.lower()}/usado/{order_tag}"
         else:
             offset = page * PAGE_SIZE + 1
-            url = f"{BASE_URL}/motos/{brand.lower()}/usado/_Desde_{offset}_NoIndex_True"
+            url = f"{BASE_URL}/motos/{brand.lower()}/usado/_Desde_{offset}{order_tag}_NoIndex_True"
 
         try:
             r = session.get(url, timeout=15)
             if r.status_code != 200:
-                logger.warning(f"  {brand} página {page+1}: HTTP {r.status_code}")
+                logger.warning(f"  {brand} [{sort}] página {page+1}: HTTP {r.status_code}")
                 break
 
             items = _extract_items_from_page(r.text)
             if not items:
-                logger.info(f"  {brand}: sin más resultados en página {page+1}")
                 break
 
             for item in items:
                 if item["id"] not in all_items:
                     all_items[item["id"]] = item
 
-            logger.info(f"  {brand} página {page+1}: {len(items)} items")
+            logger.info(f"  {brand} [{sort}] p{page+1}: {len(items)} items")
 
             if len(items) < PAGE_SIZE:
-                break  # Última página
+                break
 
             page += 1
             time.sleep(config.RATE_LIMIT_DELAY)
@@ -252,5 +247,45 @@ def fetch_all_for_brand(brand: str, max_pages: int = 5) -> list[dict]:
             logger.warning(f"  Error scrapeando {brand}: {e}")
             break
 
-    logger.info(f"  -> {len(all_items)} motos usadas encontradas para {brand}")
     return list(all_items.values())
+
+
+def fetch_all_for_brand(brand: str, max_pages: int = 5) -> list[dict]:
+    """
+    Estrategia de dos fases para maximizar detección de oportunidades:
+
+    Fase 1 — muestra de mercado (sort por relevancia, 3 páginas):
+      Obtiene una distribución representativa de precios para calcular la mediana.
+      Los primeros resultados de ML son los más completos y representativos del mercado.
+
+    Fase 2 — candidatos baratos (sort por precio ascendente, max_pages páginas):
+      Las oportunidades reales están entre los más baratos. Este sort trae primero
+      los listings con precios más bajos, que es justamente donde hay ventas urgentes.
+
+    Los stats se calculan sobre la Fase 1 (representativa).
+    El análisis de oportunidades corre sobre la unión de ambas fases.
+    """
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    logger.info(f"Scrapeando ML para {brand}...")
+
+    # Fase 1: muestra representativa para estadísticas de mercado
+    market_sample = _scrape_pages(session, brand, max_pages=3, sort="relevance")
+    # Marcar cuáles son de la muestra de mercado
+    for item in market_sample:
+        item["_market_sample"] = True
+
+    # Fase 2: listings más baratos (donde están las oportunidades)
+    cheap_candidates = _scrape_pages(session, brand, max_pages=max_pages, sort="price_asc")
+
+    # Unir ambas fases (dedup por id; cheap_candidates sobrescribe para preservar precios)
+    combined: dict[str, dict] = {i["id"]: i for i in market_sample}
+    for item in cheap_candidates:
+        combined[item["id"]] = item  # no sobreescribir el flag _market_sample si ya estaba
+
+    logger.info(
+        f"  -> {len(market_sample)} muestra mercado + {len(cheap_candidates)} baratos "
+        f"= {len(combined)} únicos para {brand}"
+    )
+    return list(combined.values())
