@@ -115,6 +115,7 @@
             <tr>
               <th>Marca</th>
               <th class="text-end">Muestras</th>
+              <th class="text-end">Con precio ML</th>
               <th class="text-end">Mediana</th>
               <th class="text-end">Promedio</th>
               <th class="text-end">P25</th>
@@ -128,13 +129,18 @@
               <td class="fw-semibold">{{ brand }}</td>
               {% if s %}
               <td class="text-end text-muted">{{ s.count }}</td>
+              <td class="text-end">
+                <span style="color:{% if s.ml_ref_count > s.count * 0.3 %}#60c3ff{% else %}#6b7280{% endif %}; font-size:.82rem;">
+                  {{ s.ml_ref_count }}
+                </span>
+              </td>
               <td class="text-end fw-semibold" style="color:#6366f1;">${{ "{:,.0f}".format(s.median).replace(",", ".") }}</td>
               <td class="text-end">${{ "{:,.0f}".format(s.mean).replace(",", ".") }}</td>
               <td class="text-end text-muted">${{ "{:,.0f}".format(s.p25).replace(",", ".") }}</td>
               <td class="text-end text-muted">${{ "{:,.0f}".format(s.p75).replace(",", ".") }}</td>
               <td class="text-end" style="color:#fbbf24;">${{ "{:,.0f}".format(s.threshold_price).replace(",", ".") }}</td>
               {% else %}
-              <td colspan="6" class="text-muted text-center">Sin datos suficientes</td>
+              <td colspan="7" class="text-muted text-center">Sin datos suficientes</td>
               {% endif %}
             </tr>
             {% endfor %}
@@ -164,6 +170,7 @@
               <th>Título</th>
               <th class="text-end" style="width:140px;">Precio</th>
               <th class="text-end" style="width:100px;">vs. mercado</th>
+              <th style="width:110px;">Referencia</th>
               <th style="width:80px;">Estado</th>
               <th style="width:160px;">Ubicación</th>
               <th>Keywords</th>
@@ -198,6 +205,19 @@
                 <span class="badge badge-below">-{{ item.pct_below_market }}%</span>
                 {% else %}
                 <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+
+              <!-- Price ref source -->
+              <td>
+                {% if item.price_ref_source == "ML precio regular" %}
+                  <span class="badge" style="background:#1a3a5c; color:#60c3ff; font-size:.68rem;">ML precio regular</span>
+                {% elif item.price_ref_source == "catálogo ML" %}
+                  <span class="badge" style="background:#1a3a5c; color:#60c3ff; font-size:.68rem;">catálogo ML</span>
+                {% elif item.price_ref_source == "precio original" %}
+                  <span class="badge" style="background:#2d2a1a; color:#fcd34d; font-size:.68rem;">precio original</span>
+                {% else %}
+                  <span class="badge" style="background:#1e2135; color:#6b7280; font-size:.68rem;">estadístico</span>
                 {% endif %}
               </td>
 

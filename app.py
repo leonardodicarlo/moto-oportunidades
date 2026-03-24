@@ -55,6 +55,8 @@ def _run_search_async(search_id: str, brands: list, threshold: float, min_score:
                 "location": o.location,
                 "is_below_market": o.is_below_market,
                 "pct_below_market": round(o.pct_below_market * 100, 1) if o.is_below_market else None,
+                "market_ref_price": o.market_ref_price,
+                "price_ref_source": o.price_ref_source,
                 "urgency_keywords": o.urgency_keywords,
                 "opportunity_score": o.opportunity_score,
             })
@@ -69,6 +71,7 @@ def _run_search_async(search_id: str, brands: list, threshold: float, min_score:
                     "p25": s.p25,
                     "p75": s.p75,
                     "threshold_price": s.below_market_threshold(),
+                    "ml_ref_count": s.ml_ref_count,
                 }
             else:
                 serialized_stats[brand] = None
@@ -148,5 +151,9 @@ def results(search_id: str):
 
 
 if __name__ == "__main__":
-    print("🏍️  Moto Oportunidades corriendo en http://localhost:5000")
-    app.run(debug=True, port=5000)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=5000)
+    args = parser.parse_args()
+    print(f"🏍️  Moto Oportunidades corriendo en http://localhost:{args.port}")
+    app.run(debug=True, port=args.port)

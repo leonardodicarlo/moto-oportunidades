@@ -19,9 +19,9 @@ BRANDS = ["Honda", "Yamaha", "Kawasaki", "KTM", "Ducati"]
 PRICE_BELOW_MARKET_THRESHOLD = float(os.getenv("PRICE_BELOW_THRESHOLD", "0.20"))  # 20% below median
 MIN_PRICE_ARS = int(os.getenv("MIN_PRICE_ARS", "800000"))  # Filtra repuestos y anticipos irrisorios
 
-# Pagination
-MAX_RESULTS_PER_BRAND = int(os.getenv("MAX_RESULTS_PER_BRAND", "200"))
-API_PAGE_SIZE = 50  # MercadoLibre max per request
+# Pagination — ML's hard limit is offset+limit <= 1000. Se buscan 'used' y 'new'
+# por separado para maximizar cobertura (~2000 resultados por marca).
+API_PAGE_SIZE = 50  # MercadoLibre max items por request
 
 # Rate limiting (seconds between requests)
 RATE_LIMIT_DELAY = float(os.getenv("RATE_LIMIT_DELAY", "0.4"))

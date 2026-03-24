@@ -7,6 +7,9 @@ import config
 
 logger = logging.getLogger(__name__)
 
+# ML's hard limit: offset + limit <= 1000
+ML_MAX_OFFSET = 950
+
 
 class MercadoLibreClient:
     """Cliente para la API pública de MercadoLibre."""
@@ -18,6 +21,7 @@ class MercadoLibreClient:
             self.session.headers.update(
                 {"Authorization": f"Bearer {config.ML_ACCESS_TOKEN}"}
             )
+        self._catalog_cache: dict[str, dict] = {}
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
         url = f"{config.BASE_URL}{path}"
@@ -32,14 +36,16 @@ class MercadoLibreClient:
             logger.warning(f"Request error for {url}: {e}")
             return {}
 
-    def search_motorcycles(self, brand: str, offset: int = 0) -> dict:
-        """Busca motos de una marca en la categoría de motos de MercadoLibre Argentina."""
+    def search_motorcycles(self, brand: str, offset: int = 0, condition: Optional[str] = None) -> dict:
+        """Busca motos de una marca. condition: 'new', 'used', o None (todos)."""
         params = {
             "q": brand,
             "category": config.MOTO_CATEGORY,
             "limit": config.API_PAGE_SIZE,
             "offset": offset,
         }
+        if condition:
+            params["condition"] = condition
         if config.ML_APP_ID:
             params["app_id"] = config.ML_APP_ID
 
@@ -47,39 +53,58 @@ class MercadoLibreClient:
         time.sleep(config.RATE_LIMIT_DELAY)
         return result
 
-    def get_item_detail(self, item_id: str) -> dict:
-        """Obtiene el detalle completo de un ítem."""
-        result = self._get(f"/items/{item_id}")
+    def get_catalog_product(self, catalog_product_id: str) -> dict:
+        """
+        Obtiene el producto de catálogo de ML con su precio de referencia.
+        Usa cache para no repetir llamadas al mismo producto.
+        """
+        if catalog_product_id in self._catalog_cache:
+            return self._catalog_cache[catalog_product_id]
+        result = self._get(f"/products/{catalog_product_id}")
         time.sleep(config.RATE_LIMIT_DELAY)
+        self._catalog_cache[catalog_product_id] = result
         return result
 
-    def get_item_description(self, item_id: str) -> str:
-        """Obtiene la descripción textual de un ítem."""
-        result = self._get(f"/items/{item_id}/description")
-        time.sleep(config.RATE_LIMIT_DELAY)
-        return result.get("plain_text", "")
-
-    def fetch_all_for_brand(self, brand: str) -> list[dict]:
-        """Pagina por todos los resultados disponibles para una marca (hasta MAX_RESULTS_PER_BRAND)."""
-        all_items = []
+    def _paginate_condition(self, brand: str, condition: Optional[str]) -> list[dict]:
+        """Pagina todos los resultados para una marca y condición hasta el límite de ML."""
+        items: dict[str, dict] = {}
         offset = 0
 
-        logger.info(f"Buscando publicaciones de {brand}...")
-        first_page = self.search_motorcycles(brand, offset=0)
+        first_page = self.search_motorcycles(brand, offset=0, condition=condition)
         total_available = first_page.get("paging", {}).get("total", 0)
-        results = first_page.get("results", [])
-        all_items.extend(results)
+        batch = first_page.get("results", [])
+        for item in batch:
+            items[item["id"]] = item
 
-        max_to_fetch = min(total_available, config.MAX_RESULTS_PER_BRAND)
-        offset = len(results)
+        offset = len(batch)
+        cap = min(total_available, ML_MAX_OFFSET + config.API_PAGE_SIZE)
 
-        while offset < max_to_fetch:
-            page = self.search_motorcycles(brand, offset=offset)
+        while offset < cap and batch:
+            page = self.search_motorcycles(brand, offset=offset, condition=condition)
             batch = page.get("results", [])
-            if not batch:
-                break
-            all_items.extend(batch)
+            for item in batch:
+                items[item["id"]] = item
             offset += len(batch)
 
-        logger.info(f"  -> {len(all_items)} publicaciones obtenidas para {brand} (total disponible: {total_available})")
-        return all_items
+        label = condition or "all"
+        logger.info(f"  [{label}] {len(items)} items (total disponible: {total_available})")
+        return list(items.values())
+
+    def fetch_all_for_brand(self, brand: str) -> list[dict]:
+        """
+        Descarga TODAS las publicaciones disponibles para una marca:
+        - Busca 'used' y 'new' por separado para maximizar cobertura
+        - Pagina hasta el límite de la API de ML (~1000 por condición)
+        - Deduplica por ID
+        """
+        logger.info(f"Buscando publicaciones de {brand}...")
+        all_items: dict[str, dict] = {}
+
+        for condition in ["used", "new"]:
+            batch = self._paginate_condition(brand, condition)
+            for item in batch:
+                all_items[item["id"]] = item
+
+        total = len(all_items)
+        logger.info(f"  -> {total} publicaciones únicas para {brand}")
+        return list(all_items.values())

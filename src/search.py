@@ -6,7 +6,13 @@ from typing import Optional
 
 import config
 from src.api.mercadolibre import MercadoLibreClient
-from src.analyzers.price_analyzer import compute_price_stats, analyze_listing, PriceStats, ListingAnalysis
+from src.analyzers.price_analyzer import (
+    compute_price_stats,
+    analyze_listing,
+    get_ml_reference_price,
+    PriceStats,
+    ListingAnalysis,
+)
 from src.analyzers.keyword_analyzer import detect_urgency_keywords, is_anticipo
 
 logger = logging.getLogger(__name__)
@@ -20,40 +26,64 @@ def _process_brand(
 ) -> tuple[Optional[PriceStats], list[ListingAnalysis]]:
     """
     Descarga, filtra y analiza todas las publicaciones de una marca.
-    on_progress: callback opcional fn(brand, message) para reportar progreso.
+
+    Orden de prioridad para el precio de referencia de mercado:
+      1. sale_price.regular_amount — dato propio de ML (el del gráfico de la UI)
+      2. original_price — descuento declarado por el vendedor
+      3. Precio de catálogo ML (GET /products/{catalog_product_id})
+      4. Mediana estadística del mercado (fallback)
     """
     raw_items = client.fetch_all_for_brand(brand)
 
     if on_progress:
         on_progress(brand, f"{len(raw_items)} publicaciones descargadas")
 
+    # Filtrar anticipos y precios irreales
     valid_items = []
-    filtered_anticipo = 0
-    filtered_price = 0
-
     for item in raw_items:
         title = item.get("title", "")
         price = float(item.get("price") or 0)
-
         if is_anticipo(title):
-            filtered_anticipo += 1
             continue
         if price < config.MIN_PRICE_ARS:
-            filtered_price += 1
             continue
-
         valid_items.append(item)
 
-    logger.info(
-        f"{brand}: {filtered_anticipo} anticipos y {filtered_price} precios bajos filtrados. "
-        f"{len(valid_items)} válidos."
-    )
+    logger.info(f"{brand}: {len(raw_items) - len(valid_items)} filtrados, {len(valid_items)} válidos.")
 
     if not valid_items:
         return None, []
 
-    prices = [float(item.get("price") or 0) for item in valid_items if item.get("price")]
-    stats = compute_price_stats(brand, prices)
+    # Enriquecer con precios de catálogo ML para items que no tienen
+    # sale_price.regular_amount ni original_price
+    catalog_prices: dict[str, float] = {}
+    catalog_ids_to_fetch = set()
+
+    for item in valid_items:
+        ml_ref, _ = get_ml_reference_price(item)
+        if ml_ref is None:
+            cid = item.get("catalog_product_id")
+            if cid:
+                catalog_ids_to_fetch.add(cid)
+
+    if catalog_ids_to_fetch:
+        if on_progress:
+            on_progress(brand, f"consultando {len(catalog_ids_to_fetch)} catálogos ML...")
+        for cid in catalog_ids_to_fetch:
+            catalog = client.get_catalog_product(cid)
+            # El precio del catálogo puede estar en distintos lugares según el producto
+            cat_price = (
+                (catalog.get("buy_box_winner") or {}).get("price")
+                or catalog.get("price")
+            )
+            if cat_price:
+                catalog_prices[cid] = float(cat_price)
+
+    # Calcular estadísticas de mercado como fallback
+    prices = [float(i.get("price") or 0) for i in valid_items if i.get("price")]
+    ml_ref_count = sum(1 for i in valid_items if get_ml_reference_price(i)[0] is not None)
+    stats = compute_price_stats(brand, prices, ml_ref_count=ml_ref_count)
+
     if stats is None:
         return None, []
 
@@ -62,7 +92,9 @@ def _process_brand(
 
     analyzed: list[ListingAnalysis] = []
     for item in valid_items:
-        listing = analyze_listing(item, stats)
+        cid = item.get("catalog_product_id")
+        catalog_ref = catalog_prices.get(cid) if cid else None
+        listing = analyze_listing(item, stats, catalog_ref_price=catalog_ref)
         listing.urgency_keywords = detect_urgency_keywords(listing.title)
         listing.compute_opportunity_score()
         analyzed.append(listing)
@@ -80,10 +112,7 @@ def run_search(
 ) -> tuple[dict[str, Optional[PriceStats]], list[ListingAnalysis]]:
     """
     Ejecuta la búsqueda completa para las marcas indicadas.
-
-    Retorna:
-        stats_by_brand: dict marca -> PriceStats (o None si no hay datos)
-        opportunities:  lista de ListingAnalysis que cumplen los criterios
+    Retorna (stats_by_brand, opportunities).
     """
     client = MercadoLibreClient()
     all_stats: dict[str, Optional[PriceStats]] = {}
