@@ -110,6 +110,8 @@ def debug_brand(brand: str):
     def do_get(params):
         if app_id:
             params["app_id"] = app_id
+        if token:
+            params["access_token"] = token
         r = req.get(f"{base}/sites/{config.SITE_ID}/search",
                     params=params, headers=headers, timeout=10)
         d = r.json()

@@ -65,7 +65,11 @@ class MercadoLibreClient:
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "moto-oportunidades/1.0"})
+        # User-Agent de browser real para evitar bloqueos por bot-detection
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+        })
         if config.ML_ACCESS_TOKEN:
             self.session.headers.update(
                 {"Authorization": f"Bearer {config.ML_ACCESS_TOKEN}"}
@@ -74,15 +78,20 @@ class MercadoLibreClient:
 
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
         url = f"{config.BASE_URL}{path}"
+        p = dict(params or {})
+        # ML acepta el token como query param además del header — lo mandamos de ambas formas
+        if config.ML_ACCESS_TOKEN:
+            p["access_token"] = config.ML_ACCESS_TOKEN
         try:
-            response = self.session.get(url, params=params, timeout=15)
+            response = self.session.get(url, params=p, timeout=15)
             # Si el token expiró, intentar renovarlo una vez
             if response.status_code == 401 and config.ML_REFRESH_TOKEN:
                 logger.info("Token expirado, renovando...")
                 new_token = _refresh_access_token()
                 if new_token:
+                    p["access_token"] = new_token
                     self.session.headers.update({"Authorization": f"Bearer {new_token}"})
-                    response = self.session.get(url, params=params, timeout=15)
+                    response = self.session.get(url, params=p, timeout=15)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as e:
