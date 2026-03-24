@@ -96,52 +96,30 @@ def _run_search_async(search_id: str, brands: list, threshold: float, min_score:
 
 @app.route("/debug/<brand>")
 def debug_brand(brand: str):
-    """Diagnóstico: prueba la API de ML con distintas combinaciones de parámetros."""
+    """Diagnóstico: prueba la API de ML usando el cliente real (con app_id)."""
     import requests as req
 
     base = config.BASE_URL
-    results_out = {}
+    app_id = config.ML_APP_ID
+    results_out = {"app_id_configured": bool(app_id), "app_id_value": app_id or "VACÍO"}
 
-    # Prueba 1: con categoría
-    r1 = req.get(f"{base}/sites/{config.SITE_ID}/search",
-                 params={"q": brand, "category": config.MOTO_CATEGORY, "limit": 3},
-                 timeout=10)
-    d1 = r1.json()
-    results_out["test_con_categoria"] = {
-        "url": r1.url,
-        "status": r1.status_code,
-        "total": d1.get("paging", {}).get("total"),
-        "returned": len(d1.get("results", [])),
-        "error": d1.get("message") or d1.get("error"),
-        "sample_conditions": [i.get("condition") for i in d1.get("results", [])],
-        "sample_titles": [i.get("title") for i in d1.get("results", [])],
-    }
+    def do_get(params):
+        if app_id:
+            params["app_id"] = app_id
+        r = req.get(f"{base}/sites/{config.SITE_ID}/search", params=params, timeout=10)
+        d = r.json()
+        return {
+            "url": r.url,
+            "status": r.status_code,
+            "total": d.get("paging", {}).get("total"),
+            "returned": len(d.get("results", [])),
+            "error": d.get("message") or d.get("error"),
+            "sample_titles": [i.get("title") for i in d.get("results", [])[:3]],
+            "sample_conditions": [i.get("condition") for i in d.get("results", [])[:3]],
+        }
 
-    # Prueba 2: sin categoría
-    r2 = req.get(f"{base}/sites/{config.SITE_ID}/search",
-                 params={"q": f"{brand} moto", "limit": 3},
-                 timeout=10)
-    d2 = r2.json()
-    results_out["test_sin_categoria"] = {
-        "url": r2.url,
-        "status": r2.status_code,
-        "total": d2.get("paging", {}).get("total"),
-        "returned": len(d2.get("results", [])),
-        "error": d2.get("message") or d2.get("error"),
-        "sample_conditions": [i.get("condition") for i in d2.get("results", [])],
-        "sample_titles": [i.get("title") for i in d2.get("results", [])],
-    }
-
-    # Prueba 3: categorías disponibles en MLA (para verificar el ID correcto)
-    r3 = req.get(f"{base}/sites/{config.SITE_ID}/categories", timeout=10)
-    d3 = r3.json()
-    vehicle_cats = [c for c in (d3 if isinstance(d3, list) else [])
-                    if "ehicul" in c.get("name", "").lower() or "moto" in c.get("name", "").lower()]
-    results_out["categories_check"] = {
-        "status": r3.status_code,
-        "moto_category_used": config.MOTO_CATEGORY,
-        "vehicle_related": vehicle_cats[:5],
-    }
+    results_out["test_con_categoria"] = do_get({"q": brand, "category": config.MOTO_CATEGORY, "limit": 3})
+    results_out["test_sin_categoria"] = do_get({"q": f"{brand} moto", "limit": 3})
 
     return jsonify(results_out)
 
