@@ -15,17 +15,46 @@ import config
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://listado.mercadolibre.com.ar"
+HOME_URL = "https://www.mercadolibre.com.ar"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "es-AR,es;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
 }
 # ML muestra 48 resultados por página
 PAGE_SIZE = 48
+
+
+def _make_session() -> requests.Session:
+    """
+    Crea una sesión HTTP que simula un browser real.
+    Primero visita la homepage de ML para obtener las cookies de sesión
+    que ML requiere antes de mostrar resultados de búsqueda.
+    """
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    try:
+        # Visita de calentamiento: ML necesita ver cookies de sesión válidas
+        session.get(HOME_URL, timeout=15)
+        time.sleep(0.5)
+        # Segunda visita: homepage de motos usadas para obtener cookies de categoría
+        session.get(f"{BASE_URL}/motos/usado/", timeout=15, headers={"Referer": HOME_URL})
+        time.sleep(0.5)
+    except Exception as e:
+        logger.warning(f"Warmup request falló (continuando de todas formas): {e}")
+    return session
 
 
 def _extract_items_from_page(html: str) -> list[dict]:
@@ -212,11 +241,11 @@ def fetch_all_for_brand(brand: str, max_pages: int = 10) -> list[dict]:
     baratas (páginas intermedias/finales). El análisis estadístico detecta
     automáticamente los más baratos sin necesitar sort especial.
     """
-    session = requests.Session()
-    session.headers.update(HEADERS)
+    session = _make_session()
 
     all_items: dict[str, dict] = {}
     page = 0
+    prev_url = f"{BASE_URL}/motos/usado/"
 
     logger.info(f"Scrapeando ML para {brand} (hasta {max_pages} páginas)...")
 
@@ -228,10 +257,15 @@ def fetch_all_for_brand(brand: str, max_pages: int = 10) -> list[dict]:
             url = f"{BASE_URL}/motos/{brand.lower()}/usado/_Desde_{offset}_NoIndex_True"
 
         try:
-            r = session.get(url, timeout=15)
+            r = session.get(url, timeout=15, headers={"Referer": prev_url})
+            # Detectar redirección a login wall
+            if "account-verification" in r.url or "login" in r.url:
+                logger.warning(f"  {brand}: ML redirigió a verificación de cuenta — bloqueado por anti-bot")
+                break
             if r.status_code != 200:
                 logger.warning(f"  {brand} página {page+1}: HTTP {r.status_code}")
                 break
+            prev_url = url
 
             items = _extract_items_from_page(r.text)
             if not items:

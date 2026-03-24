@@ -238,6 +238,63 @@ def debug_scraper(brand: str):
     })
 
 
+@app.route("/debug/scraper/html/<brand>")
+def debug_scraper_html(brand: str):
+    """Diagnóstico del HTML que devuelve ML — muestra estructura para depurar selectores."""
+    from bs4 import BeautifulSoup
+    from src.api.scraper import _make_session
+
+    url = f"https://listado.mercadolibre.com.ar/motos/{brand.lower()}/usado/"
+    session = _make_session()
+    r = session.get(url, timeout=15, headers={"Referer": "https://listado.mercadolibre.com.ar/motos/usado/"})
+    soup = BeautifulSoup(r.text, "lxml")
+
+    # Buscar selectores conocidos
+    selectors_found = {}
+    for sel in [
+        ".ui-search-layout__item",
+        ".andes-card.poly-card",
+        "[class*='ui-search-result']",
+        ".poly-component__title",
+        ".ui-search-item__title",
+        ".andes-money-amount__fraction",
+        ".price-tag-fraction",
+        ".andes-money-amount__currency-symbol",
+        "a[href*='mercadolibre']",
+    ]:
+        els = soup.select(sel)
+        selectors_found[sel] = len(els)
+
+    # Buscar script tags con JSON
+    import re
+    script_tags = soup.find_all("script")
+    json_scripts = []
+    for s in script_tags:
+        text = s.get_text()[:100] if s.get_text() else ""
+        if "PRELOADED_STATE" in text or "application/json" in str(s.get("type", "")):
+            json_scripts.append(text[:200])
+
+    # Primeros 3 items (sea cual sea el selector)
+    first_items_html = []
+    for sel in [".ui-search-layout__item", ".andes-card.poly-card", "[class*='ui-search-result']"]:
+        els = soup.select(sel)
+        if els:
+            first_items_html = [str(el)[:500] for el in els[:2]]
+            break
+
+    return jsonify({
+        "status_code": r.status_code,
+        "final_url": r.url,
+        "page_title": soup.title.get_text() if soup.title else None,
+        "html_length": len(r.text),
+        "selectors_found": selectors_found,
+        "json_scripts_found": len(json_scripts),
+        "json_scripts_sample": json_scripts[:2],
+        "first_items_html_sample": first_items_html,
+        "body_text_preview": soup.get_text()[:500].strip(),
+    })
+
+
 @app.route("/")
 def index():
     return render_template("index.html", brands=config.BRANDS,
