@@ -39,7 +39,6 @@ class MercadoLibreClient:
             "category": config.MOTO_CATEGORY,
             "limit": config.API_PAGE_SIZE,
             "offset": offset,
-            "sort": "price_asc",  # Primero los más baratos para detectar outliers
         }
         if config.ML_APP_ID:
             params["app_id"] = config.ML_APP_ID
