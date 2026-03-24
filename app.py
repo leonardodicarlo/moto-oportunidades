@@ -100,7 +100,7 @@ def debug_brand(brand: str):
     from src.api.mercadolibre import MercadoLibreClient
     from src.analyzers.keyword_analyzer import is_anticipo
     client = MercadoLibreClient()
-    raw = client.search_motorcycles(brand, offset=0, condition="used")
+    raw = client.search_motorcycles(brand, offset=0)
     results = raw.get("results", [])
     total = raw.get("paging", {}).get("total", 0)
     error = raw.get("message") or raw.get("error")
@@ -109,6 +109,8 @@ def debug_brand(brand: str):
     for item in results:
         price = float(item.get("price") or 0)
         title = item.get("title", "")
+        if item.get("condition") != "used":
+            continue
         if is_anticipo(title):
             filtered_anticipo.append({"title": title, "price": price})
         elif price < config.MIN_PRICE_ARS:

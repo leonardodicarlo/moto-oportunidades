@@ -36,16 +36,14 @@ class MercadoLibreClient:
             logger.warning(f"Request error for {url}: {e}")
             return {}
 
-    def search_motorcycles(self, brand: str, offset: int = 0, condition: Optional[str] = None) -> dict:
-        """Busca motos de una marca. condition: 'new', 'used', o None (todos)."""
+    def search_motorcycles(self, brand: str, offset: int = 0) -> dict:
+        """Busca motos de una marca en la categoría de motos de MercadoLibre Argentina."""
         params = {
             "q": brand,
             "category": config.MOTO_CATEGORY,
             "limit": config.API_PAGE_SIZE,
             "offset": offset,
         }
-        if condition:
-            params["condition"] = condition
         if config.ML_APP_ID:
             params["app_id"] = config.ML_APP_ID
 
@@ -65,46 +63,34 @@ class MercadoLibreClient:
         self._catalog_cache[catalog_product_id] = result
         return result
 
-    def _paginate_condition(self, brand: str, condition: Optional[str]) -> list[dict]:
-        """Pagina todos los resultados para una marca y condición hasta el límite de ML."""
-        items: dict[str, dict] = {}
+    def fetch_all_for_brand(self, brand: str) -> list[dict]:
+        """
+        Descarga todas las publicaciones de motos usadas para una marca.
+        Pagina hasta el límite de la API de ML (~1000 resultados).
+        Filtra client-side por condition=='used' ya que ML no acepta el
+        parámetro condition como filtro directo en el search endpoint.
+        """
+        logger.info(f"Buscando publicaciones de {brand}...")
+        all_items: dict[str, dict] = {}
         offset = 0
 
-        first_page = self.search_motorcycles(brand, offset=0, condition=condition)
+        first_page = self.search_motorcycles(brand, offset=0)
         total_available = first_page.get("paging", {}).get("total", 0)
         batch = first_page.get("results", [])
         for item in batch:
-            items[item["id"]] = item
+            if item.get("condition") == "used":
+                all_items[item["id"]] = item
 
         offset = len(batch)
         cap = min(total_available, ML_MAX_OFFSET + config.API_PAGE_SIZE)
 
         while offset < cap and batch:
-            page = self.search_motorcycles(brand, offset=offset, condition=condition)
+            page = self.search_motorcycles(brand, offset=offset)
             batch = page.get("results", [])
             for item in batch:
-                items[item["id"]] = item
+                if item.get("condition") == "used":
+                    all_items[item["id"]] = item
             offset += len(batch)
 
-        label = condition or "all"
-        logger.info(f"  [{label}] {len(items)} items (total disponible: {total_available})")
-        return list(items.values())
-
-    def fetch_all_for_brand(self, brand: str) -> list[dict]:
-        """
-        Descarga TODAS las publicaciones disponibles para una marca:
-        - Busca 'used' y 'new' por separado para maximizar cobertura
-        - Pagina hasta el límite de la API de ML (~1000 por condición)
-        - Deduplica por ID
-        """
-        logger.info(f"Buscando publicaciones de {brand}...")
-        all_items: dict[str, dict] = {}
-
-        for condition in ["used"]:
-            batch = self._paginate_condition(brand, condition)
-            for item in batch:
-                all_items[item["id"]] = item
-
-        total = len(all_items)
-        logger.info(f"  -> {total} publicaciones únicas para {brand}")
+        logger.info(f"  -> {len(all_items)} usadas de {total_available} totales para {brand}")
         return list(all_items.values())
