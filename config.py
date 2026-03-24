@@ -13,6 +13,9 @@ ML_APP_ID = os.getenv("ML_APP_ID", "")
 ML_CLIENT_SECRET = os.getenv("ML_CLIENT_SECRET", "")
 ML_ACCESS_TOKEN = os.getenv("ML_ACCESS_TOKEN", "")
 ML_REFRESH_TOKEN = os.getenv("ML_REFRESH_TOKEN", "")
+# Cookies de sesión web de ML (copiadas del browser logueado en mercadolibre.com.ar)
+# Obtener: DevTools → Network → cualquier request → header "cookie:"
+ML_COOKIE_HEADER = os.getenv("ML_COOKIE_HEADER", "")
 
 # Brands to search
 BRANDS = ["Honda", "Yamaha", "Kawasaki", "KTM", "Ducati"]

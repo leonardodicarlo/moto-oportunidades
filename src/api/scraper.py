@@ -22,16 +22,11 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
     "Accept-Encoding": "gzip, deflate",  # sin 'br': requests no soporta Brotli nativamente
     "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Cache-Control": "max-age=0",
 }
 # ML muestra 48 resultados por página
 PAGE_SIZE = 48
@@ -39,35 +34,27 @@ PAGE_SIZE = 48
 
 def _make_session() -> requests.Session:
     """
-    Crea una sesión HTTP autenticada.
+    Crea una sesión HTTP con las cookies de ML.
 
-    ML redirige a account-verification cuando no hay sesión activa.
-    Si tenemos un access_token de OAuth, lo usamos para crear una sesión web
-    en ML a través de su endpoint de login (el mismo flujo que usa el browser
-    después del callback OAuth). Esto establece las cookies de sesión necesarias.
+    ML redirige a account-verification si la sesión no está autenticada.
+    La forma más confiable es usar las cookies reales de un browser logueado,
+    configuradas en ML_COOKIE_HEADER en el .env.
+
+    Cómo obtenerlas: abrí DevTools en listado.mercadolibre.com.ar →
+    Network → cualquier request → Headers → copiar el valor del header "cookie:".
+    Pegarlo en .env como: ML_COOKIE_HEADER=<valor copiado>
     """
     session = requests.Session()
     session.headers.update(HEADERS)
 
-    try:
-        if config.ML_ACCESS_TOKEN:
-            # Autenticar sesión web con el OAuth token
-            # ML acepta access_token como query param para crear la sesión web
-            session.get(
-                f"{HOME_URL}/login",
-                params={"access_token": config.ML_ACCESS_TOKEN, "go": f"{BASE_URL}/motos/usado/"},
-                allow_redirects=True,
-                timeout=15,
-            )
-            time.sleep(0.5)
-        else:
-            # Sin token: visita de calentamiento básica para obtener cookies anónimas
-            session.get(HOME_URL, timeout=15)
-            time.sleep(0.5)
-            session.get(f"{BASE_URL}/motos/usado/", timeout=15, headers={"Referer": HOME_URL})
-            time.sleep(0.5)
-    except Exception as e:
-        logger.warning(f"Sesión ML falló (continuando de todas formas): {e}")
+    if config.ML_COOKIE_HEADER:
+        session.headers.update({"Cookie": config.ML_COOKIE_HEADER})
+        logger.info("Usando cookies de ML desde ML_COOKIE_HEADER")
+    else:
+        logger.warning(
+            "ML_COOKIE_HEADER no configurado — ML puede redirigir a account-verification. "
+            "Ver instrucciones en config.py para obtener las cookies del browser."
+        )
 
     return session
 
