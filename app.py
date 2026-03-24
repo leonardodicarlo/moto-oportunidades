@@ -96,46 +96,54 @@ def _run_search_async(search_id: str, brands: list, threshold: float, min_score:
 
 @app.route("/debug/<brand>")
 def debug_brand(brand: str):
-    """Diagnóstico: muestra qué devuelve la API de ML para una marca sin procesar."""
-    from src.api.mercadolibre import MercadoLibreClient
-    from src.analyzers.keyword_analyzer import is_anticipo
-    client = MercadoLibreClient()
-    raw = client.search_motorcycles(brand, offset=0)
-    results = raw.get("results", [])
-    total = raw.get("paging", {}).get("total", 0)
-    error = raw.get("message") or raw.get("error")
+    """Diagnóstico: prueba la API de ML con distintas combinaciones de parámetros."""
+    import requests as req
 
-    filtered_anticipo, filtered_price, valid = [], [], []
-    for item in results:
-        price = float(item.get("price") or 0)
-        title = item.get("title", "")
-        if item.get("condition") != "used":
-            continue
-        if is_anticipo(title):
-            filtered_anticipo.append({"title": title, "price": price})
-        elif price < config.MIN_PRICE_ARS:
-            filtered_price.append({"title": title, "price": price})
-        else:
-            sp = item.get("sale_price") or {}
-            valid.append({
-                "title": title,
-                "price": price,
-                "original_price": item.get("original_price"),
-                "sale_price_regular": sp.get("regular_amount"),
-                "catalog_product_id": item.get("catalog_product_id"),
-                "condition": item.get("condition"),
-            })
+    base = config.BASE_URL
+    results_out = {}
 
-    return jsonify({
-        "brand": brand,
-        "api_error": error,
-        "total_available_in_ml": total,
-        "returned_in_this_page": len(results),
-        "min_price_ars_filter": config.MIN_PRICE_ARS,
-        "valid": valid,
-        "filtered_anticipo": filtered_anticipo,
-        "filtered_price_too_low": filtered_price,
-    })
+    # Prueba 1: con categoría
+    r1 = req.get(f"{base}/sites/{config.SITE_ID}/search",
+                 params={"q": brand, "category": config.MOTO_CATEGORY, "limit": 3},
+                 timeout=10)
+    d1 = r1.json()
+    results_out["test_con_categoria"] = {
+        "url": r1.url,
+        "status": r1.status_code,
+        "total": d1.get("paging", {}).get("total"),
+        "returned": len(d1.get("results", [])),
+        "error": d1.get("message") or d1.get("error"),
+        "sample_conditions": [i.get("condition") for i in d1.get("results", [])],
+        "sample_titles": [i.get("title") for i in d1.get("results", [])],
+    }
+
+    # Prueba 2: sin categoría
+    r2 = req.get(f"{base}/sites/{config.SITE_ID}/search",
+                 params={"q": f"{brand} moto", "limit": 3},
+                 timeout=10)
+    d2 = r2.json()
+    results_out["test_sin_categoria"] = {
+        "url": r2.url,
+        "status": r2.status_code,
+        "total": d2.get("paging", {}).get("total"),
+        "returned": len(d2.get("results", [])),
+        "error": d2.get("message") or d2.get("error"),
+        "sample_conditions": [i.get("condition") for i in d2.get("results", [])],
+        "sample_titles": [i.get("title") for i in d2.get("results", [])],
+    }
+
+    # Prueba 3: categorías disponibles en MLA (para verificar el ID correcto)
+    r3 = req.get(f"{base}/sites/{config.SITE_ID}/categories", timeout=10)
+    d3 = r3.json()
+    vehicle_cats = [c for c in (d3 if isinstance(d3, list) else [])
+                    if "ehicul" in c.get("name", "").lower() or "moto" in c.get("name", "").lower()]
+    results_out["categories_check"] = {
+        "status": r3.status_code,
+        "moto_category_used": config.MOTO_CATEGORY,
+        "vehicle_related": vehicle_cats[:5],
+    }
+
+    return jsonify(results_out)
 
 
 @app.route("/")
