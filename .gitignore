@@ -1,0 +1,36 @@
+# Entorno virtual
+venv/
+.venv/
+env/
+.env
+
+# Resultados generados
+resultados.csv
+resultados_*.csv
+*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
