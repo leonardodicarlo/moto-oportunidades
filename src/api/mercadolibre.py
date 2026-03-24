@@ -100,7 +100,7 @@ class MercadoLibreClient:
         logger.info(f"Buscando publicaciones de {brand}...")
         all_items: dict[str, dict] = {}
 
-        for condition in ["used", "new"]:
+        for condition in ["used"]:
             batch = self._paginate_condition(brand, condition)
             for item in batch:
                 all_items[item["id"]] = item
